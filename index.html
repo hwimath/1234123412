@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>로그함수의 그래프(이동, 정의역, 치역)</title>
+<!-- MathJax for LaTeX rendering -->
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+
+<style>
+  /* 흑백 테마 */
+  body {
+    background-color: #000;
+    color: #fff;
+    font-family: sans-serif;
+    margin: 20px;
+  }
+  h1, h2, h3 {
+    color: #fff;
+  }
+  .hidden {
+    display: none;
+  }
+  .question-box {
+    border: 1px solid #fff;
+    padding: 10px;
+    margin: 10px 0;
+  }
+  .energy-bar {
+    width: 200px;
+    height: 20px;
+    background-color: #fff;
+    margin: 10px 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .energy-fill {
+    height: 100%;
+    background-color: #333;
+    width: 100%;
+    transition: width 0.2s linear;
+  }
+  .answer-button, .start-button, .send-button {
+    background-color: #333;
+    color: #fff;
+    border: 1px solid #fff;
+    margin: 5px;
+    cursor: pointer;
+    padding: 5px 10px;
+  }
+  .answer-button:hover, .start-button:hover, .send-button:hover {
+    background-color: #555;
+  }
+  .ox-buttons button {
+    margin-right: 20px;
+  }
+  .choices-container {
+    margin: 10px 0;
+  }
+  .choice-item {
+    margin: 5px 0;
+  }
+</style>
+
+</head>
+<body>
+
+<h1>로그함수의 그래프(이동, 정의역, 치역)</h1>
+
+<!-- 첫 화면: 이름 입력, 난이도 선택 -->
+<div id="startScreen">
+  <h2>이름을 입력해주세요:</h2>
+  <input type="text" id="playerName" placeholder="이름 입력">
+  <h2>난이도를 선택하세요:</h2>
+  <div>
+    <label><input type="radio" name="difficulty" value="top">최상 (시작: 20초/문제, 20점/정답)</label><br>
+    <label><input type="radio" name="difficulty" value="high">상 (시작: 30초/문제, 15점/정답)</label><br>
+    <label><input type="radio" name="difficulty" value="mid">중 (시작: 40초/문제, 13점/정답)</label><br>
+    <label><input type="radio" name="difficulty" value="low" checked>하 (시간 제한 없음, 10점/정답)</label>
+  </div>
+  <button class="start-button" onclick="startGame()">게임 시작</button>
+</div>
+
+<!-- 게임 진행 화면 -->
+<div id="gameScreen" class="hidden">
+
+  <div>
+    <span>남은 기회: <span id="lives">3</span></span>  
+    &nbsp;|&nbsp;
+    <span>누적 점수: <span id="score">0</span></span>
+    &nbsp;|&nbsp;
+    <span>전체 경과 시간: <span id="totalTime">0</span>초</span>
+  </div>
+
+  <!-- 문제 표시 영역 -->
+  <div class="question-box" id="questionContainer"></div>
+
+  <!-- 에너지바(문제별 시간 표시) -->
+  <div class="energy-bar" id="energyBarContainer">
+    <div class="energy-fill" id="energyFill"></div>
+  </div>
+
+  <!-- 정답 및 해설 표시 영역 -->
+  <div id="feedback" style="margin:10px 0;"></div>
+
+</div>
+
+<!-- 게임 종료화면 + 점수전송 -->
+<div id="endScreen" class="hidden">
+  <h2>게임 종료!</h2>
+  <p>최종 점수: <span id="finalScore">0</span></p>
+  <button class="send-button" onclick="sendScore()">점수전송</button>
+  <div id="response" style="white-space: pre; margin-top:10px;"></div>
+</div>
+
+<script>
+// 난이도별 제한시간(초) 및 점수
+const DIFFICULTY_INFO = {
+  top:   { time: 20, point: 20 },
+  high:  { time: 30, point: 15 },
+  mid:   { time: 40, point: 13 },
+  low:   { time: 9999999, point: 10 } // 사실상 무제한
+};
+
+///////////////////////////////////////////
+// 모든 문제 (하나도 빠짐없이) 등록
+// type = "ox" or "4choice"
+//  - "ox":  correctAnswer = "O" or "X"
+//  - "4choice": choices = [ {text:'...', isCorrect:true/false}, ... ]
+// question: 문제+조건 전체 서술
+// explanation(또는 정답표시용): 정답 문구 (오답 시 보여줄 텍스트)
+///////////////////////////////////////////
+const questions = [
+  // 1–1
+  {
+    type: "ox",
+    question: 
+      "조건: 함수 \\( f(x) = \\log_{a} x \\) 에 대하여.<br>" +
+      "문항: \"함수 \\( y = 2\\log_{a} x \\) 의 그래프를 평행이동하면 그래프가 접혀진다.\"",
+    correctAnswer: "X",
+    explanation: "단순히 배율이 달라진 것이므로 평행이동과 접힘은 무관합니다."
+  },
+  // 1–2
+  {
+    type: "ox",
+    question: 
+      "조건: 함수 \\( f(x) = \\log_{a} x \\) 에 대하여.<br>" +
+      "문항: \"함수 \\( y = \\log_{a}(2x) \\) 의 그래프를 평행이동하면 그래프가 접혀진다.\"",
+    correctAnswer: "X",
+    explanation: "가로 방향의 스케일 변환이지, 평행이동이나 접힘과는 무관합니다."
+  },
+  // 2–1
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y=\\log_{4}(x-2) + 3 \\) 에 대하여.<br>" +
+      "문항: \"이 함수의 수직 점근선은 \\( x=2 \\) 이다.\"",
+    correctAnswer: "O",
+    explanation: "x-2=0 \\(\\rightarrow\\) x=2 에서 정의 불가하므로 수직점근선은 x=2."
+  },
+  // 2–2
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y=\\log_{4}(x-2) + 3 \\) 에 대하여.<br>" +
+      "문항: \"치역은 \\(\\{ y \\mid y>3 \\}\\) 이다.\"",
+    correctAnswer: "X",
+    explanation: "로그함수에 상수만큼 더해도 치역은 여전히 모든 실수입니다."
+  },
+  // 2–3
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y=\\log_{4}(x-2) + 3 \\) 에 대하여.<br>" +
+      "문항: \"\\( x \\)가 증가하면 \\( y \\)도 증가한다.\"",
+    correctAnswer: "O",
+    explanation: "밑이 4(>1)이므로 로그함수는 증가함수입니다."
+  },
+  // 2–4
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y=\\log_{4}(x-2) + 3 \\) 에 대하여.<br>" +
+      "문항: \"이 함수는 \\( y=\\log_{4}x \\) 의 그래프를 \\( x \\)축으로 -2, \\( y \\)축으로 +3만큼 평행이동한 결과이다.\"",
+    correctAnswer: "X",
+    explanation: "실제로는 x축 방향 +2(오른쪽 2) 이동이므로 해당 서술은 틀립니다."
+  },
+  // 3–1
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y = \\log_{\\dfrac13}\\bigl(9(x+2)\\bigr) \\) 에 대하여.<br>" +
+      "문항: \"이 함수의 수직 점근선은 \\( x=2 \\) 이다.\"",
+    correctAnswer: "X",
+    explanation: "x+2=0 => x=-2 가 정의 불가지점이므로 x=-2가 수직점근선입니다."
+  },
+  // 3–2
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y = \\log_{\\dfrac13}\\bigl(9(x+2)\\bigr) \\) 에 대하여.<br>" +
+      "문항: \"\\( x \\)가 증가하면 \\( y \\)값이 감소한다.\"",
+    correctAnswer: "O",
+    explanation: "밑이 1보다 작은 (\\(\\dfrac13\\)) 로그함수는 감소함수입니다."
+  },
+  // 3–3
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y = \\log_{\\dfrac13}\\bigl(9(x+2)\\bigr) \\) 에 대하여.<br>" +
+      "문항: \"이 그래프는 점 \\((1, -1)\\)을 지난다.\"",
+    correctAnswer: "X",
+    explanation: "x=1 대입 시 y=-3 이므로 (1,-1)은 지나지 않습니다."
+  },
+  // 3–4
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y = \\log_{\\dfrac13}\\bigl(9(x+2)\\bigr) \\) 에 대하여.<br>" +
+      "문항: \"정의역은 \\(\\{ x\\mid x>-2 \\}\\)이다.\"",
+    correctAnswer: "O",
+    explanation: "9(x+2)>0 => x>-2 이므로 정의역은 x>-2."
+  },
+  // 4 (4지선다)
+  {
+    type: "4choice",
+    question:
+      "조건: 원함수 \\( y=\\log_{2}(x) \\)의 그래프를<br>" +
+      "1) \\(x\\)축 방향으로 오른쪽 3만큼,<br>" +
+      "2) \\(y\\)축 방향으로 아래 2만큼<br>" +
+      "평행이동하여 얻은 새 그래프의 식은 어느 것인가?",
+    choices: [
+      { text: "\\(y=\\log_{2}(x+3)-2\\)", isCorrect: false },
+      { text: "\\(y=\\log_{2}(x-3)-2\\)", isCorrect: true },
+      { text: "\\(y=\\log_{2}(x-3)+2\\)", isCorrect: false },
+      { text: "\\(y=\\log_{2}(x+3)+2\\)", isCorrect: false }
+    ],
+    explanation: "오른쪽 3이동-> x-3, 아래 2이동-> 식에서 -2."
+  },
+  // 5–1
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y=\\log_{2}(x-2) + 3 \\) 에 대하여.<br>" +
+      "문항: \"정의역은 \\( x>2 \\) 이다.\"",
+    correctAnswer: "O",
+    explanation: "x-2>0 => x>2."
+  },
+  // 5–2
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y=\\log_{2}(x-2) + 3 \\) 에 대하여.<br>" +
+      "문항: \"\\( x \\)가 증가할수록 \\( y \\)도 증가한다.\"",
+    correctAnswer: "O",
+    explanation: "밑 2(>1) 로그함수이므로 증가함수입니다."
+  },
+  // 5–3
+  {
+    type: "ox",
+    question:
+      "조건: 함수 \\( y=\\log_{2}(x-2) + 3 \\) 에 대하여.<br>" +
+      "문항: \"이 함수는 \\( y=\\log_{2}x \\) 그래프를 " +
+      "\\( x \\)축 방향으로 +2, \\( y \\)축 방향으로 +3 만큼 평행이동한 결과이다.\"",
+    correctAnswer: "O",
+    explanation: "오른쪽 2 이동, 위로 3 이동이므로 맞는 설명입니다."
+  }
+];
+
+// 전역변수
+let currentIndex = 0;     // 현재 문제 index
+let playerScore = 0;      // 점수
+let lives = 3;            // 기회
+let startTime = 0;        // 게임 시작 시각
+let totalTimeInterval;    // 전체 경과시간 갱신용
+let questionTimer;        // 문제별 타이머
+let questionTime = 9999999; // 현재 난이도에서의 제한시간
+let questionRemainTime = 9999999;
+let gameIsOver = false;
+let playerName = "";
+let difficulty = "low";
+
+// 난수 배열 섞기
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+function startGame() {
+  // 이름, 난이도 설정
+  playerName = document.getElementById("playerName").value || "NoName";
+  const diffs = document.getElementsByName("difficulty");
+  for (let d of diffs) {
+    if (d.checked) {
+      difficulty = d.value;
+      break;
+    }
+  }
+  questionTime = DIFFICULTY_INFO[difficulty].time;
+
+  // 초기 설정
+  document.getElementById("startScreen").classList.add("hidden");
+  document.getElementById("gameScreen").classList.remove("hidden");
+
+  lives = 3;
+  playerScore = 0;
+  document.getElementById("lives").textContent = lives;
+  document.getElementById("score").textContent = playerScore;
+
+  // 전체 타이머 시작
+  startTime = Date.now();
+  totalTimeInterval = setInterval(updateTotalTime, 1000);
+
+  // 문제 목록 섞기
+  shuffleArray(questions);
+  currentIndex = 0;
+  gameIsOver = false;
+
+  showNextQuestion();
+}
+
+function updateTotalTime() {
+  const now = Date.now();
+  const elapsed = Math.floor((now - startTime) / 1000);
+  document.getElementById("totalTime").textContent = elapsed;
+}
+
+function showNextQuestion() {
+  if (gameIsOver) return;
+
+  if (currentIndex >= questions.length) {
+    // 모든 문제 후에도 무한 반복 (문제 다시 섞기)
+    shuffleArray(questions);
+    currentIndex = 0;
+  }
+
+  const q = questions[currentIndex];
+  const container = document.getElementById("questionContainer");
+  container.innerHTML = `<div>${q.question}</div>`;
+
+  // 수식 렌더링
+  MathJax.typeset();
+
+  // 에너지바 리셋 (문제마다)
+  resetEnergyBar();
+
+  // 선택지나 OX버튼 준비
+  const feedback = document.getElementById("feedback");
+  feedback.innerHTML = ""; // 이전 피드백 제거
+
+  if (q.type === "ox") {
+    const btnContainer = document.createElement("div");
+    btnContainer.className = "ox-buttons";
+    
+    const oBtn = document.createElement("button");
+    oBtn.className = "answer-button";
+    oBtn.textContent = "O";
+    oBtn.onclick = () => checkAnswer("O");
+    
+    const xBtn = document.createElement("button");
+    xBtn.className = "answer-button";
+    xBtn.textContent = "X";
+    xBtn.onclick = () => checkAnswer("X");
+    
+    btnContainer.appendChild(oBtn);
+    btnContainer.appendChild(xBtn);
+    container.appendChild(btnContainer);
+  } else if (q.type === "4choice") {
+    // 보기 섞기
+    shuffleArray(q.choices);
+
+    const choiceContainer = document.createElement("div");
+    choiceContainer.className = "choices-container";
+    q.choices.forEach((c, idx) => {
+      const cDiv = document.createElement("div");
+      cDiv.className = "choice-item";
+      const btn = document.createElement("button");
+      btn.className = "answer-button";
+      btn.innerHTML = `보기 ${idx+1}: \\(${c.text}\\)`;
+      btn.onclick = () => check4Choice(q, c);
+      cDiv.appendChild(btn);
+      choiceContainer.appendChild(cDiv);
+    });
+    container.appendChild(choiceContainer);
+
+    // 다시 수식 렌더링 (보기에도 수식이 있으므로)
+    MathJax.typeset();
+  }
+
+  // 문제 시간 제한 (하 난이도면 무제한)
+  if (difficulty !== "low") {
+    questionRemainTime = questionTime;
+    questionTimer = setInterval(() => {
+      questionRemainTime -= 0.2; // 0.2초 간격으로 갱신
+      updateEnergyBar();
+      if (questionRemainTime <= 0) {
+        timeUp();
+      }
+    }, 200);
+  }
+}
+
+function resetEnergyBar() {
+  const fill = document.getElementById("energyFill");
+  fill.style.width = "100%";
+
+  if (questionTimer) clearInterval(questionTimer);
+  if (difficulty === "low") {
+    document.getElementById("energyBarContainer").classList.add("hidden");
+  } else {
+    document.getElementById("energyBarContainer").classList.remove("hidden");
+  }
+}
+
+function updateEnergyBar() {
+  const ratio = questionRemainTime / questionTime;
+  const fill = document.getElementById("energyFill");
+  fill.style.width = (ratio * 100) + "%";
+}
+
+function timeUp() {
+  // 시간 초과
+  clearInterval(questionTimer);
+  lives--;
+  document.getElementById("lives").textContent = lives;
+  
+  // 정답 표시
+  const q = questions[currentIndex];
+  const feedback = document.getElementById("feedback");
+  feedback.innerHTML = 
+    "시간이 초과되었습니다!<br>정답: " + (q.type==="4choice" ? get4ChoiceAnswerText(q) : q.correctAnswer) +
+    "<br>" + (q.explanation||"") ;
+  
+  if (lives <= 0) {
+    endGame();
+  } else {
+    currentIndex++;
+    setTimeout(() => {
+      showNextQuestion();
+      MathJax.typeset();
+    }, 2000);
+  }
+}
+
+// 4지선다 정답 텍스트 (해설 표시에 사용)
+function get4ChoiceAnswerText(q) {
+  // 원래 문제에선 특정 choice가 isCorrect:true
+  // 이걸 찾아서 그 텍스트 반환
+  const ans = q.choices.find(ch => ch.isCorrect);
+  return ans ? "\\(" + ans.text + "\\)" : "";
+}
+
+// 4지선다 정답 체크
+function check4Choice(questionObj, choiceObj) {
+  clearInterval(questionTimer);
+  const correct = choiceObj.isCorrect;
+  if (correct) {
+    playerScore += DIFFICULTY_INFO[difficulty].point;
+    document.getElementById("score").textContent = playerScore;
+    document.getElementById("feedback").innerHTML = "정답입니다!";
+  } else {
+    lives--;
+    document.getElementById("lives").textContent = lives;
+    document.getElementById("feedback").innerHTML = 
+      "틀렸습니다!<br>정답: " + get4ChoiceAnswerText(questionObj) + 
+      "<br>" + (questionObj.explanation || "");
+  }
+
+  if (lives <= 0) {
+    endGame();
+  } else {
+    currentIndex++;
+    setTimeout(() => {
+      showNextQuestion();
+      MathJax.typeset();
+    }, 2000);
+  }
+}
+
+// OX 정답 체크
+function checkAnswer(answer) {
+  clearInterval(questionTimer);
+  const q = questions[currentIndex];
+  const isCorrect = (answer === q.correctAnswer);
+  const feedback = document.getElementById("feedback");
+
+  if (isCorrect) {
+    playerScore += DIFFICULTY_INFO[difficulty].point;
+    document.getElementById("score").textContent = playerScore;
+    feedback.innerHTML = "정답입니다!";
+  } else {
+    lives--;
+    document.getElementById("lives").textContent = lives;
+    feedback.innerHTML = 
+      "틀렸습니다!<br>정답: " + q.correctAnswer + 
+      "<br>" + (q.explanation || "");
+  }
+
+  if (lives <= 0) {
+    endGame();
+  } else {
+    currentIndex++;
+    setTimeout(() => {
+      showNextQuestion();
+      MathJax.typeset();
+    }, 2000);
+  }
+}
+
+function endGame() {
+  gameIsOver = true;
+  clearInterval(questionTimer);
+  clearInterval(totalTimeInterval);
+
+  document.getElementById("gameScreen").classList.add("hidden");
+  document.getElementById("endScreen").classList.remove("hidden");
+  document.getElementById("finalScore").textContent = playerScore;
+}
+
+// 점수 전송
+function sendScore() {
+  const endTime = Date.now();
+  const elapsedSec = Math.floor((endTime - startTime)/1000);
+
+  saveData(
+    "로그함수의 그래프(이동, 정의역, 치역)",
+    playerName,
+    playerScore,
+    elapsedSec
+  );
+}
+
+//////////////////////////////////////////////////////
+// 서버 전송 함수
+function saveData(game, name, score, elapsedTime) {
+    const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+
+    const requestData = {
+        game,
+        name,
+        score: parseInt(score, 10),
+        elapsedTime: parseInt(elapsedTime, 10)
+    };
+
+    fetch(FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+    .then(async response => {
+        const responseData = await response.json();
+        if (response.ok) {
+            document.getElementById('response').innerText =
+                `성공: ${JSON.stringify(responseData, null, 2)}`;
+        } else {
+            document.getElementById('response').innerText =
+                `오류: ${JSON.stringify(responseData, null, 2)}`;
+        }
+    })
+    .catch(error => {
+        console.error('요청 실패:', error);
+        document.getElementById('response').innerText =
+            `네트워크 오류: ${error.message}`;
+    });
+}
+</script>
+
+</body>
+</html>
